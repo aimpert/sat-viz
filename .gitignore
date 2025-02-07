@@ -1,0 +1,10 @@
+# Python
+api/__pycache__/
+api/*.pyc
+api/*.pyo
+api/*.pyd
+api/.env/
+
+# Rust
+rs_compute/target
+rs_compute/Cargo.lock
