@@ -1,9 +1,14 @@
 import os
+from fastapi import FastAPI, Depends, HTTPException
 from dotenv import load_dotenv # type: ignore
 import psycopg2 # type: ignore
 from psycopg2 import Error # type: ignore
 import requests
 import rs_compute 
+from db_utils import get_db
+from sqlalchemy.orm import Session
+from models import Satellite
+from contextlib import contextmanager
 
 # This is a "scratch" script. Some of these will be consolidated into
 # db_utils and tle_fetcher and the like.
@@ -12,19 +17,13 @@ load_dotenv(dotenv_path='.env/.env')
 
 NASA_API = "https://tle.ivanstanojevic.me/api/tle/"
 
-def connect_to_db():
+@contextmanager
+def get_db_session():
+    db = next(get_db())
     try:
-        connection = psycopg2.connect(
-            host=os.getenv('DB_HOST'),
-            database=os.getenv('DB_NAME'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD'),
-            port=os.getenv('DB_PORT')
-        )
-        return connection
-    except Error as e:
-        print(f"Error connecting to PostgreSQL: {e}")
-        return None
+        yield db
+    finally:
+        db.close()
 
 def fetch_satellites():
     headers = {
@@ -36,84 +35,79 @@ def fetch_satellites():
         return response.json() 
     return []
 
-# def store_sat_data(sat_data):
-#     conn = connect_to_db()
-#     cur = conn.cursor()
+def store_sat_data(sat_data):
+    db = next(get_db())
 
-#     for sat in sat_data.get("member", []):
-#         norad_id = sat.get("satelliteId")
-#         name = sat.get("name")
+    with get_db_session() as db:
+        for item in sat_data.get("member", []):
+            sat = Satellite(
+                norad_id=item.get("satelliteId"),
+                name=item.get("name")
+            )
+            db.add(sat)
+        db.commit()
 
-#         cur.execute(
-#             "INSERT INTO satviz.satellites (norad_id, name) VALUES (%s, %s) ON CONFLICT (norad_id) DO NOTHING;",
-#             (norad_id, name)
-#         )
+sat_data = fetch_satellites()
+store_sat_data(sat_data)
 
-#     conn.commit()
-#     cur.close()
-#     conn.close()
+print(sat_data)
 
-# sat_data = fetch_satellites()
-# store_sat_data(sat_data)
+# def check_NASA_TLEs(id):
+#     headers = {
+#     "User-Agent": "Mozilla/5.0 (compatible; MyPythonScript/1.0; +https://mywebsite.com)"
+#     }
+#     url = f"https://tle.ivanstanojevic.me/api/tle/{id}"
+#     response = requests.get(url, headers=headers)
+#     data = response.json()
 
-# print(sat_data)
+#     tle_1 = data.get("line1", '')
+#     tle_2 = data.get("line2", '')
 
-def check_NASA_TLEs(id):
-    headers = {
-    "User-Agent": "Mozilla/5.0 (compatible; MyPythonScript/1.0; +https://mywebsite.com)"
-    }
-    url = f"https://tle.ivanstanojevic.me/api/tle/{id}"
-    response = requests.get(url, headers=headers)
-    data = response.json()
-
-    tle_1 = data.get("line1", '')
-    tle_2 = data.get("line2", '')
-
-    return tle_1, tle_2
+#     return tle_1, tle_2
 
 
 
-def populate_TLEs():
-    connection = connect_to_db()
+# def populate_TLEs():
+#     connection = connect_to_db()
 
-    cursor = connection.cursor()
+#     cursor = connection.cursor()
 
-    query = "SELECT norad_id FROM satviz.satellites;"
+#     query = "SELECT norad_id FROM satviz.satellites;"
 
-    cursor.execute(query)
+#     cursor.execute(query)
 
-    ids = cursor.fetchall()
-    i = 0
-    # for id_tuple in ids:
-    # id = id_tuple[0]
-    id = 43786
-    url = "https://api.n2yo.com/rest/v1/satellite/tle/" + str(id) + "&apiKey=" + os.getenv('N2YO_API_KEY')
-    response = requests.get(url)
-    data = response.json()
+#     ids = cursor.fetchall()
+#     i = 0
+#     # for id_tuple in ids:
+#     # id = id_tuple[0]
+#     id = 43786
+#     url = "https://api.n2yo.com/rest/v1/satellite/tle/" + str(id) + "&apiKey=" + os.getenv('N2YO_API_KEY')
+#     response = requests.get(url)
+#     data = response.json()
 
-    tle = data.get("tle", '')
+#     tle = data.get("tle", '')
 
-    if tle:
-        tle_1, tle_2 = tle.split('\r\n')
-    else:
-        tle_1, tle_2 = check_NASA_TLEs(id)
+#     if tle:
+#         tle_1, tle_2 = tle.split('\r\n')
+#     else:
+#         tle_1, tle_2 = check_NASA_TLEs(id)
 
-    date = rs_compute.calculate_timestamp(tle_1)
+#     date = rs_compute.calculate_timestamp(tle_1)
 
-    if not tle_1 and not tle_2:
-        return
+#     if not tle_1 and not tle_2:
+#         return
 
-    print(f"ID: {id} Loop: {i}")
-    print(f"TLE 1: {tle_1}")
-    print(f"TLE 2: {tle_2}")
-    print(f"Date: {date}")
-    i += 1
+#     print(f"ID: {id} Loop: {i}")
+#     print(f"TLE 1: {tle_1}")
+#     print(f"TLE 2: {tle_2}")
+#     print(f"Date: {date}")
+#     i += 1
 
     
-    cursor.close()
-    connection.close()
+#     cursor.close()
+#     connection.close()
 
-populate_TLEs()
+# populate_TLEs()
 # tle_1, tle_2 = check_NASA_TLEs(43694)
 # print(f"TLE 1: {tle_1}")
 # print(f"TLE 2: {tle_2}")

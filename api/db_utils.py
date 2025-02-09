@@ -1,41 +1,40 @@
 import os
-from dotenv import load_dotenv # type: ignore
-import psycopg2 # type: ignore
-from psycopg2 import Error # type: ignore
+from dotenv import load_dotenv
+import psycopg2 
+from psycopg2 import Error 
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, scoped_session
 
 load_dotenv(dotenv_path='.env/.env')
 
-def connect_to_db():
+DATABASE_URL = os.getenv('DB_URL')
+
+engine = create_engine(DATABASE_URL)
+
+SessionalLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Session = scoped_session(SessionalLocal)
+
+Base = declarative_base()
+
+# def connect_to_db():
+#     try:
+#         connection = psycopg2.connect(
+#             host=os.getenv('DB_HOST'),
+#             database=os.getenv('DB_NAME'),
+#             user=os.getenv('DB_USER'),
+#             password=os.getenv('DB_PASSWORD'),
+#             port=os.getenv('DB_PORT')
+#         )
+#         return connection
+#     except Error as e:
+#         print(f"Error connecting to PostgreSQL: {e}")
+#         return None
+
+def get_db():
+    db = Session()
     try:
-        connection = psycopg2.connect(
-            host=os.getenv('DB_HOST'),
-            database=os.getenv('DB_NAME'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD'),
-            port=os.getenv('DB_PORT')
-        )
-        return connection
-    except Error as e:
-        print(f"Error connecting to PostgreSQL: {e}")
-        return None
-    
-def fetch_data():
-    connection = connect_to_db()
-    if connection:
-        try:
-            cursor = connection.cursor()
-
-            query = "SELECT * FROM testschema.testtable ORDER BY id ASC"
-
-            cursor.execute(query)
-
-            records = cursor.fetchall()
-
-            return records
-        except Error as e:
-            print(f"Error executing query: {e}")
-            return None
-        finally:
-            if connection:
-                cursor.close()
-                connection.close()
+        yield db
+    finally:
+        db.close()
