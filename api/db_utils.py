@@ -1,7 +1,7 @@
 import os
-from dotenv import load_dotenv
-import psycopg2
-from psycopg2 import Error
+from dotenv import load_dotenv # type: ignore
+import psycopg2 # type: ignore
+from psycopg2 import Error # type: ignore
 
 load_dotenv(dotenv_path='.env/.env')
 
