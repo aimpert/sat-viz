@@ -1,7 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 
-// ThreeJS and Third-party deps
 import * as THREE from "three"
 import * as dat from 'dat.gui'
 import Stats from "three/examples/jsm/libs/stats.module"
@@ -12,14 +11,11 @@ import { createCamera, createRenderer, runApp, updateLoadingProgressBar } from "
 
 // Other deps
 import { loadTexture } from "./three/common-utils"
-import Albedo from "./assets/Albedo.jpg"
-import Bump from "./assets/Bump.jpg"
-import Clouds from "./assets/Clouds.png"
-import Ocean from "./assets/Ocean.png"
-import NightLights from "./assets/night_lights_modified.png"
-// import vertexShader from "./shaders/vertex.glsl"
-// import fragmentShader from "./shaders/fragment.glsl"
-import GaiaSky from "./assets/Gaia_EDR3_darkened.png"
+import Day from "./assets/day.jpg"
+import Clouds from "./assets/specularClouds.jpg"
+import Night from "./assets/night.jpg"
+import earthVertexShader from "./shaders/vertex.glsl"
+import earthFragmentShader from "./shaders/fragment.glsl"
 
 global.THREE = THREE
 // previously this feature is .legacyMode = false, see https://www.donmccurdy.com/2020/06/17/color-management-in-threejs/
@@ -32,7 +28,7 @@ THREE.ColorManagement.enabled = true
 const params = {
   // general scene params
   sunIntensity: 1.3, // brightness of the sun
-  speedFactor: 2.0, // rotation speed of the earth
+  speedFactor: 10.0, // rotation speed of the earth
   metalness: 0.1,
   atmOpacity: { value: 0.7 },
   atmPowFactor: { value: 4.1 },
@@ -57,7 +53,7 @@ let renderer = createRenderer({ antialias: true }, (_renderer) => {
 
 // Create the camera
 // Pass in fov, near, far and camera position respectively
-let camera = createCamera(45, 1, 1000, { x: 0, y: 0, z: 30 })
+let camera = createCamera(45, 1, 1000, { x: 0, y: 0, z: 10 })
 
 
 /**************************************************
@@ -73,97 +69,69 @@ let app = {
     this.controls.enableDamping = true
 
     // adding a virtual sun using directional light
-    this.dirLight = new THREE.DirectionalLight(0xffffff, params.sunIntensity)
-    this.dirLight.position.set(-50, 0, 30)
-    scene.add(this.dirLight)
+    // this.dirLight = new THREE.DirectionalLight(0xffffff, params.sunIntensity)
+    // this.dirLight.position.set(-50, 0, 30)
+    // scene.add(this.dirLight)
 
-    // updates the progress bar to 10% on the loading UI
-    await updateLoadingProgressBar(0.1)
+    const earthDayTexture = await loadTexture(Day)
+    earthDayTexture.colorSpace = THREE.SRGBColorSpace
+    earthDayTexture.anisotropy = 8
+    await updateLoadingProgressBar(0.2)
+    const earthNightTexture = await loadTexture(Night)
+    earthNightTexture.colorSpace = THREE.SRGBColorSpace
+    earthNightTexture.anisotropy = 8
+    await updateLoadingProgressBar(0.4)
+    const earthSpecularCloudsTexture = await loadTexture(Clouds)
+    earthSpecularCloudsTexture.anisotropy = 8
+    await updateLoadingProgressBar(0.99)
 
-    // loads earth's color map, the basis of how our earth looks like
-    const albedoMap = await loadTexture(Albedo)
-    albedoMap.colorSpace = THREE.SRGBColorSpace
-
-    const bumpMap = await loadTexture(Bump)
-
-    
-    const cloudsMap = await loadTexture(Clouds)
-
-
-    const oceanMap = await loadTexture(Ocean)
-
-
-
-    // create group for easier manipulation of objects(ie later with clouds and atmosphere added)
     this.group = new THREE.Group()
     // earth's axial tilt is 23.5 degrees
     this.group.rotation.z = 23.5 / 360 * 2 * Math.PI
-    
-    let earthGeo = new THREE.SphereGeometry(10, 64, 64)
-    let earthMat = new THREE.MeshStandardMaterial({
-      map: albedoMap,
-      bumpMap: bumpMap,
-      bumpScale: 0.03, // must be really small, if too high even bumps on the back side got lit up
-      roughnessMap: oceanMap, // will get reversed in the shaders
-      metalness: params.metalness, // gets multiplied with the texture values from metalness map
-      metalnessMap: oceanMap,
-    })
-    this.earth = new THREE.Mesh(earthGeo, earthMat)
-    this.group.add(this.earth)
-    
-    let cloudGeo = new THREE.SphereGeometry(10.05, 64, 64)
-    let cloudsMat = new THREE.MeshStandardMaterial({
-      alphaMap: cloudsMap,
-      transparent: true,
-    })
-    this.clouds = new THREE.Mesh(cloudGeo, cloudsMat)
-    this.group.add(this.clouds)
-    
-    // set initial rotational position of earth to get a good initial angle
-    this.earth.rotateY(-0.3)
-    this.clouds.rotateY(-0.3)
 
+    this.earthGeometry = new THREE.SphereGeometry(2, 64, 64)
+    this.earthMaterial = new THREE.ShaderMaterial({
+      vertexShader: earthVertexShader,
+      fragmentShader: earthFragmentShader,
+      uniforms: {
+        uDayTexture: new THREE.Uniform(earthDayTexture),
+        uNightTexture: new THREE.Uniform(earthNightTexture),
+        uSpecularCloudsTexture: new THREE.Uniform(earthSpecularCloudsTexture),
+        uSunDirection: new THREE.Uniform(new THREE.Vector3(0, 0, 1))
+      }
+    })
+    this.earth = new THREE.Mesh(this.earthGeometry, this.earthMaterial)
+    this.group.add(this.earth)
     scene.add(this.group)
 
-    earthMat.onBeforeCompile = function( shader ) {
-      shader.uniforms.tClouds = { value: cloudsMap }
-      shader.uniforms.tClouds.value.wrapS = THREE.RepeatWrapping;
-      shader.uniforms.uv_xOffset = { value: 0 }
-      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
-        #include <common>
-        uniform sampler2D tClouds;
-        uniform float uv_xOffset;
-      `);
-      shader.fragmentShader = shader.fragmentShader.replace('#include <roughnessmap_fragment>', `
-        float roughnessFactor = roughness;
 
-        #ifdef USE_ROUGHNESSMAP
+    this.sunSpherical = new THREE.Spherical(1, Math.PI * 0.5, 0.5)
+    this.sunDirection = new THREE.Vector3()
 
-          vec4 texelRoughness = texture2D( roughnessMap, vRoughnessMapUv );
-          // reversing the black and white values because we provide the ocean map
-          texelRoughness = vec4(1.0) - texelRoughness;
+    this.debugSun = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.1, 2),
+      new THREE.MeshBasicMaterial()
+    )
+    scene.add(this.debugSun)
 
-          // reads channel G, compatible with a combined OcclusionRoughnessMetallic (RGB) texture
-          roughnessFactor *= clamp(texelRoughness.g, 0.5, 1.0);
+    this.updateSun = () =>
+    {
+      this.sunDirection.setFromSpherical(this.sunSpherical)
 
-        #endif
-      `);
-    
-      // need save to userData.shader in order to enable our code to update values in the shader uniforms,
-      // reference from https://github.com/mrdoob/three.js/blob/master/examples/webgl_materials_modified.html
-      earthMat.userData.shader = shader
+      this.debugSun.position.copy(this.sunDirection).multiplyScalar(5)
+
+      this.earthMaterial.uniforms.uSunDirection.value.copy(this.sunDirection)
     }
+    this.updateSun()
 
-    // GUI controls
+    
+
     const gui = new dat.GUI()
     gui.add(params, "sunIntensity", 0.0, 5.0, 0.1).onChange((val) => {
       this.dirLight.intensity = val
     }).name("Sun Intensity")
-    // gui.add(params, "metalness", 0.0, 1.0, 0.05).onChange((val) => {
-    //   earthMat.metalness = val
-    // }).name("Ocean Metalness")
-    gui.add(params, "speedFactor", 0.1, 20.0, 0.1).name("Rotation Speed")
-    
+    gui.add(this.sunSpherical, 'phi').min(0).max(Math.PI).onChange(this.updateSun)
+    gui.add(this.sunSpherical, 'theta').min(- Math.PI).max(Math.PI).onChange(this.updateSun)
     // Stats - show fps
     this.stats1 = new Stats()
     this.stats1.showPanel(0) // Panel 0 = fps
@@ -178,22 +146,11 @@ let app = {
   updateScene(interval, elapsed) {
     this.controls.update()
     this.stats1.update()
-
-    // use rotateY instead of rotation.y so as to rotate by axis Y local to each mesh
     this.earth.rotateY(interval * 0.005 * params.speedFactor)
-    this.clouds.rotateY(interval * 0.01 * params.speedFactor)
+    // use rotateY instead of rotation.y so as to rotate by axis Y local to each mesh
+    // this.earth.rotateY(interval * 0.005 * params.speedFactor)
+    // this.clouds.rotateY(interval * 0.01 * params.speedFactor)
 
-    const shader = this.earth.material.userData.shader
-    if ( shader ) {
-      // As for each n radians Point X has rotated, Point Y would have rotated 2n radians.
-      // Thus uv.x of Point Y would always be = uv.x of Point X - n / 2π.
-      // Dividing n by 2π is to convert from radians(i.e. 0 to 2π) into the uv space(i.e. 0 to 1).
-      // The offset n / 2π would be passed into the shader program via the uniform variable: uv_xOffset.
-      // We do offset % 1 because the value of 1 for uv.x means full circle,
-      // whenever uv_xOffset is larger than one, offsetting 2π radians is like no offset at all.
-      let offset = (interval * 0.005 * params.speedFactor) / (2 * Math.PI)
-      shader.uniforms.uv_xOffset.value += offset % 1
-    }
   }
 }
 

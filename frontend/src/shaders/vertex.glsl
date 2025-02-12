@@ -1,15 +1,18 @@
+varying vec2 vUv;
 varying vec3 vNormal;
-varying vec3 eyeVector;
+varying vec3 vPosition;
 
-void main() {
-    // modelMatrix transforms the coordinates local to the model into world space
-    vec4 mvPos = modelViewMatrix * vec4( position, 1.0 );
+void main()
+{
+    // Position
+    vec4 modelPosition = modelMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * viewMatrix * modelPosition;
 
-    // normalMatrix is a matrix that is used to transform normals from object space to view space.
-    vNormal = normalize( normalMatrix * normal );
+    // Model normal
+    vec3 modelNormal = (modelMatrix * vec4(normal, 0.0)).xyz;
 
-    // vector pointing from camera to vertex in view space
-    eyeVector = normalize(mvPos.xyz);
-
-    gl_Position = projectionMatrix * mvPos;
+    // Varyings
+    vUv = uv;
+    vNormal = modelNormal;
+    vPosition = modelPosition.xyz;
 }
