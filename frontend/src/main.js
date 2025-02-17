@@ -14,7 +14,7 @@ import { loadTexture } from "./three/common-utils"
 import Day from "./assets/day.jpg"
 import Clouds from "./assets/specularClouds.jpg"
 import Night from "./assets/night.jpg"
-import GaiaSky from "./assets/gaia.webp"
+import StarMap from "./assets/starmap.png"
 import earthVertexShader from "./shaders/earth/vertex.glsl"
 import earthFragmentShader from "./shaders/earth/fragment.glsl"
 import atmosphereVertexShader from "./shaders/atmosphere/vertex.glsl"
@@ -28,15 +28,7 @@ THREE.ColorManagement.enabled = true
 /**************************************************
  * 0. Tweakable parameters for the scene
  *************************************************/
-const params = {
-  // general scene params
-  sunIntensity: 1.3, // brightness of the sun
-  speedFactor: 10.0, // rotation speed of the earth
-  metalness: 0.1,
-  atmOpacity: { value: 0.7 },
-  atmPowFactor: { value: 4.1 },
-  atmMultiplier: { value: 9.5 },
-}
+
 
 
 /**************************************************
@@ -93,37 +85,29 @@ let app = {
     earthSpecularCloudsTexture.anisotropy = 8
     await updateLoadingProgressBar(0.6)
 
-    const envMap = await loadTexture(GaiaSky)
+    const envMap = await loadTexture(StarMap)
+    envMap.colorSpace = THREE.SRGBColorSpace
     envMap.mapping = THREE.EquirectangularReflectionMapping
     await updateLoadingProgressBar(0.8)
     scene.background = envMap
     this.group = new THREE.Group()
     // earth's axial tilt is 23.5 degrees
-    this.group.rotation.z = 23.5 / 360 * 2 * Math.PI
+    this.group.rotation.z = -(23.5 / 360 * 2 * Math.PI)
 
     const now = new Date();
     const dayOfYear = (Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(now.getFullYear(), 0, 0)) / 86400000;
     const declination = 23.44 * Math.cos(((360 / 365) * (dayOfYear + 10)) * (Math.PI / 180));
-    
-    // Equation of Time (EoT) correction for more accuracy
-    const B = ((dayOfYear - 81) * 360 / 365) * (Math.PI / 180);
-    const equationOfTime = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
-    
-    // Get UTC time in decimal hours
+
+    const earthTilt = declination * (Math.PI / 180);
     const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
-    
-    // Convert to Local Solar Time
-    const longitude = 0;  // Adjust if needed
-    const localSolarTime = utcHours + (longitude / 15) + (equationOfTime / 60);
-    const hourAngle = (localSolarTime - 12) * 15 * (Math.PI / 180); // Convert to radians
-    
-    // Convert spherical to Cartesian
+    const sunAngle = (utcHours / 24) * 2 * Math.PI;
+
     this.sunDirection = new THREE.Vector3(
-        Math.cos(hourAngle) * Math.cos(declination * (Math.PI / 180)),
-        -Math.sin(declination * (Math.PI / 180)),
-        Math.sin(hourAngle) * Math.cos(declination * (Math.PI / 180))
+        -Math.cos(sunAngle),
+        Math.sin(earthTilt),
+        -Math.sin(sunAngle)
     );
-    this.sunDirection.normalize();
+    this.sunDirection.normalize()
 
     this.earthGeometry = new THREE.SphereGeometry(5, 128, 128)
     this.earthMaterial = new THREE.ShaderMaterial({
