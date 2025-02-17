@@ -14,8 +14,11 @@ import { loadTexture } from "./three/common-utils"
 import Day from "./assets/day.jpg"
 import Clouds from "./assets/specularClouds.jpg"
 import Night from "./assets/night.jpg"
-import earthVertexShader from "./shaders/vertex.glsl"
-import earthFragmentShader from "./shaders/fragment.glsl"
+import GaiaSky from "./assets/gaia.webp"
+import earthVertexShader from "./shaders/earth/vertex.glsl"
+import earthFragmentShader from "./shaders/earth/fragment.glsl"
+import atmosphereVertexShader from "./shaders/atmosphere/vertex.glsl"
+import atmosphereFragmentShader from "./shaders/atmosphere/fragment.glsl"
 
 global.THREE = THREE
 // previously this feature is .legacyMode = false, see https://www.donmccurdy.com/2020/06/17/color-management-in-threejs/
@@ -53,7 +56,7 @@ let renderer = createRenderer({ antialias: true }, (_renderer) => {
 
 // Create the camera
 // Pass in fov, near, far and camera position respectively
-let camera = createCamera(45, 1, 1000, { x: 0, y: 0, z: 10 })
+let camera = createCamera(45, 1, 1000, { x: 0, y: 0, z: 20 })
 
 
 /**************************************************
@@ -73,6 +76,11 @@ let app = {
     // this.dirLight.position.set(-50, 0, 30)
     // scene.add(this.dirLight)
 
+    const earthParameters = {}
+    earthParameters.atmosphereDayColor = '#00aaff'
+    earthParameters.atmosphereTwilightColor = '#ff6600'
+    //earthParameters.atmosphereTwilightColor = '#00aaff'
+
     const earthDayTexture = await loadTexture(Day)
     earthDayTexture.colorSpace = THREE.SRGBColorSpace
     earthDayTexture.anisotropy = 8
@@ -83,13 +91,41 @@ let app = {
     await updateLoadingProgressBar(0.4)
     const earthSpecularCloudsTexture = await loadTexture(Clouds)
     earthSpecularCloudsTexture.anisotropy = 8
-    await updateLoadingProgressBar(0.99)
+    await updateLoadingProgressBar(0.6)
 
+    const envMap = await loadTexture(GaiaSky)
+    envMap.mapping = THREE.EquirectangularReflectionMapping
+    await updateLoadingProgressBar(0.8)
+    scene.background = envMap
     this.group = new THREE.Group()
     // earth's axial tilt is 23.5 degrees
     this.group.rotation.z = 23.5 / 360 * 2 * Math.PI
 
-    this.earthGeometry = new THREE.SphereGeometry(2, 64, 64)
+    const now = new Date();
+    const dayOfYear = (Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(now.getFullYear(), 0, 0)) / 86400000;
+    const declination = 23.44 * Math.cos(((360 / 365) * (dayOfYear + 10)) * (Math.PI / 180));
+    
+    // Equation of Time (EoT) correction for more accuracy
+    const B = ((dayOfYear - 81) * 360 / 365) * (Math.PI / 180);
+    const equationOfTime = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+    
+    // Get UTC time in decimal hours
+    const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
+    
+    // Convert to Local Solar Time
+    const longitude = 0;  // Adjust if needed
+    const localSolarTime = utcHours + (longitude / 15) + (equationOfTime / 60);
+    const hourAngle = (localSolarTime - 12) * 15 * (Math.PI / 180); // Convert to radians
+    
+    // Convert spherical to Cartesian
+    this.sunDirection = new THREE.Vector3(
+        Math.cos(hourAngle) * Math.cos(declination * (Math.PI / 180)),
+        -Math.sin(declination * (Math.PI / 180)),
+        Math.sin(hourAngle) * Math.cos(declination * (Math.PI / 180))
+    );
+    this.sunDirection.normalize();
+
+    this.earthGeometry = new THREE.SphereGeometry(5, 128, 128)
     this.earthMaterial = new THREE.ShaderMaterial({
       vertexShader: earthVertexShader,
       fragmentShader: earthFragmentShader,
@@ -97,16 +133,38 @@ let app = {
         uDayTexture: new THREE.Uniform(earthDayTexture),
         uNightTexture: new THREE.Uniform(earthNightTexture),
         uSpecularCloudsTexture: new THREE.Uniform(earthSpecularCloudsTexture),
-        uSunDirection: new THREE.Uniform(new THREE.Vector3(0, 0, 1))
+        uSunDirection: new THREE.Uniform(this.sunDirection),
+        uAtmosphereDayColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereDayColor)),
+        uAtmosphereTwilightColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereTwilightColor))
       }
     })
     this.earth = new THREE.Mesh(this.earthGeometry, this.earthMaterial)
+
+    // const rightnow = new Date();
+    // const rotation = (2 * Math.PI) / 86164;
+    // this.earth.rotation.y += rotation * (rightnow - this.startTime) / 1000;
     this.group.add(this.earth)
+
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+      vertexShader: atmosphereVertexShader,
+      fragmentShader: atmosphereFragmentShader,
+      side: THREE.BackSide,
+      transparent: true,
+      uniforms: {
+        uSunDirection: new THREE.Uniform(this.sunDirection),
+        uAtmosphereDayColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereDayColor)),
+        uAtmosphereTwilightColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereTwilightColor))
+      }
+    });
+    const atmosphere = new THREE.Mesh(this.earthGeometry, atmosphereMaterial);
+    atmosphere.scale.set(1.016, 1.016, 1.016)
+    scene.add(atmosphere)
+
     scene.add(this.group)
 
 
     this.sunSpherical = new THREE.Spherical(1, Math.PI * 0.5, 0.5)
-    this.sunDirection = new THREE.Vector3()
+    // this.sunDirection = new THREE.Vector3()
 
     this.debugSun = new THREE.Mesh(
       new THREE.IcosahedronGeometry(0.1, 2),
@@ -114,24 +172,37 @@ let app = {
     )
     scene.add(this.debugSun)
 
-    this.updateSun = () =>
-    {
-      this.sunDirection.setFromSpherical(this.sunSpherical)
+    // this.updateSun = () =>
+    // {
+    //   this.sunDirection.setFromSpherical(this.sunSpherical)
 
-      this.debugSun.position.copy(this.sunDirection).multiplyScalar(5)
+    //   this.debugSun.position.copy(this.sunDirection).multiplyScalar(5)
 
-      this.earthMaterial.uniforms.uSunDirection.value.copy(this.sunDirection)
-    }
-    this.updateSun()
+    //   this.earthMaterial.uniforms.uSunDirection.value.copy(this.sunDirection)
+    //   atmosphereMaterial.uniforms.uSunDirection.value.copy(this.sunDirection)
+    // }
+    // this.updateSun()
 
     
 
-    const gui = new dat.GUI()
-    gui.add(params, "sunIntensity", 0.0, 5.0, 0.1).onChange((val) => {
-      this.dirLight.intensity = val
-    }).name("Sun Intensity")
-    gui.add(this.sunSpherical, 'phi').min(0).max(Math.PI).onChange(this.updateSun)
-    gui.add(this.sunSpherical, 'theta').min(- Math.PI).max(Math.PI).onChange(this.updateSun)
+    // const gui = new dat.GUI()
+    // gui.add(params, "sunIntensity", 0.0, 5.0, 0.1).onChange((val) => {
+    //   this.dirLight.intensity = val
+    // }).name("Sun Intensity")
+    // gui.add(this.sunSpherical, 'phi').min(0).max(Math.PI).onChange(this.updateSun)
+    // gui.add(this.sunSpherical, 'theta').min(- Math.PI).max(Math.PI).onChange(this.updateSun)
+    // gui.addColor(earthParameters, "atmosphereDayColor").onChange(() =>
+    //   {
+    //     this.earthMaterial.uniforms.uAtmosphereDayColor.value.set(earthParameters.atmosphereDayColor)
+    //     atmosphereMaterial.uniforms.uAtmosphereDayColor.value.set(earthParameters.atmosphereDayColor)
+    //   }
+    //   )
+    // gui.addColor(earthParameters, "atmosphereTwilightColor").onChange(() =>
+    //   {
+    //     this.earthMaterial.uniforms.uAtmosphereTwilightColor.value.set(earthParameters.atmosphereTwilightColor)
+    //     atmosphereMaterial.uniforms.uAtmosphereTwilightColor.value.set(earthParameters.atmosphereTwilightColor)
+    //   }
+    //   )
     // Stats - show fps
     this.stats1 = new Stats()
     this.stats1.showPanel(0) // Panel 0 = fps
@@ -146,7 +217,11 @@ let app = {
   updateScene(interval, elapsed) {
     this.controls.update()
     this.stats1.update()
-    this.earth.rotateY(interval * 0.005 * params.speedFactor)
+    // const now = new Date();
+    // const rotation = (2 * Math.PI) / 86164;
+    // this.earth.rotateY(rotation * (now - this.startTime) / 1000);
+    // this.startTime = now;
+    // this.earth.rotateY(interval * 0.005 * params.speedFactor)
     // use rotateY instead of rotation.y so as to rotate by axis Y local to each mesh
     // this.earth.rotateY(interval * 0.005 * params.speedFactor)
     // this.clouds.rotateY(interval * 0.01 * params.speedFactor)

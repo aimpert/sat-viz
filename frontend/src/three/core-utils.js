@@ -99,6 +99,7 @@ export const createRenderer = (rendererProps = {}, configureRenderer = (renderer
     const renderer = new THREE.WebGLRenderer(rendererProps)
     renderer.setPixelRatio(window.devicePixelRatio)
     renderer.setSize(window.innerWidth, window.innerHeight)
+    // renderer.setClearColor('#333333')
 
     // more configurations to the renderer from the consumer
     configureRenderer(renderer)
