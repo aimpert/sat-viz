@@ -147,14 +147,15 @@ let app = {
     scene.add(this.group)
 
 
-    this.sunSpherical = new THREE.Spherical(1, Math.PI * 0.5, 0.5)
+    // this.sunSpherical = new THREE.Spherical(3, Math.PI * 0.5, 0.5)
     // this.sunDirection = new THREE.Vector3()
 
-    this.debugSun = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(0.1, 2),
-      new THREE.MeshBasicMaterial()
-    )
-    scene.add(this.debugSun)
+    // this.debugSun = new THREE.Mesh(
+    //   new THREE.SphereGeometry(0.5, 16, 16),
+    //   new THREE.MeshBasicMaterial({ color: 0xffff00 })
+    // )
+    // this.debugSun.position.copy(this.sunDirection).multiplyScalar(15);
+    // scene.add(this.debugSun)
 
     // this.updateSun = () =>
     // {

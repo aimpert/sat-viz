@@ -21,7 +21,7 @@ void main()
     //color = vec3(sunOrientation);
 
     // Day / night
-    float dayMix = smoothstep(-0.3, 1.0, sunOrientation);
+    float dayMix = pow(smoothstep(-0.1, 0.4, sunOrientation), 1.5);
     vec3 dayColor = texture(uDayTexture, vUv).rgb;
     vec3 nightColor = texture(uNightTexture, vUv).rgb;
     color = mix(nightColor, dayColor, dayMix);
