@@ -90,9 +90,8 @@ let app = {
     envMap.mapping = THREE.EquirectangularReflectionMapping
     await updateLoadingProgressBar(0.8)
     scene.background = envMap
-    this.group = new THREE.Group()
-    // earth's axial tilt is 23.5 degrees
-    this.group.rotation.z = -(23.5 / 360 * 2 * Math.PI)
+
+  
 
     const now = new Date();
     const dayOfYear = (Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(now.getFullYear(), 0, 0)) / 86400000;
@@ -102,32 +101,30 @@ let app = {
     const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
     const sunAngle = (utcHours / 24) * 2 * Math.PI;
 
-    this.sunDirection = new THREE.Vector3(
+    const sunDirection = new THREE.Vector3(
         -Math.cos(sunAngle),
         Math.sin(earthTilt),
         -Math.sin(sunAngle)
-    );
-    this.sunDirection.normalize()
+    ).normalize()
 
     this.earthGeometry = new THREE.SphereGeometry(5, 128, 128)
-    this.earthMaterial = new THREE.ShaderMaterial({
+    const earthMaterial = new THREE.ShaderMaterial({
       vertexShader: earthVertexShader,
       fragmentShader: earthFragmentShader,
       uniforms: {
         uDayTexture: new THREE.Uniform(earthDayTexture),
         uNightTexture: new THREE.Uniform(earthNightTexture),
         uSpecularCloudsTexture: new THREE.Uniform(earthSpecularCloudsTexture),
-        uSunDirection: new THREE.Uniform(this.sunDirection),
+        uSunDirection: new THREE.Uniform(sunDirection),
         uAtmosphereDayColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereDayColor)),
         uAtmosphereTwilightColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereTwilightColor))
       }
     })
-    this.earth = new THREE.Mesh(this.earthGeometry, this.earthMaterial)
-
+    const earth = new THREE.Mesh(this.earthGeometry, earthMaterial)
+    earth.rotation.z = -(23.5 / 360 * 2 * Math.PI)
     // const rightnow = new Date();
     // const rotation = (2 * Math.PI) / 86164;
     // this.earth.rotation.y += rotation * (rightnow - this.startTime) / 1000;
-    this.group.add(this.earth)
 
     const atmosphereMaterial = new THREE.ShaderMaterial({
       vertexShader: atmosphereVertexShader,
@@ -135,7 +132,7 @@ let app = {
       side: THREE.BackSide,
       transparent: true,
       uniforms: {
-        uSunDirection: new THREE.Uniform(this.sunDirection),
+        uSunDirection: new THREE.Uniform(sunDirection),
         uAtmosphereDayColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereDayColor)),
         uAtmosphereTwilightColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereTwilightColor))
       }
@@ -143,51 +140,17 @@ let app = {
     const atmosphere = new THREE.Mesh(this.earthGeometry, atmosphereMaterial);
     atmosphere.scale.set(1.016, 1.016, 1.016)
     scene.add(atmosphere)
+    scene.add(earth)
 
-    scene.add(this.group)
 
-
-    // this.sunSpherical = new THREE.Spherical(3, Math.PI * 0.5, 0.5)
-    // this.sunDirection = new THREE.Vector3()
 
     // this.debugSun = new THREE.Mesh(
     //   new THREE.SphereGeometry(0.5, 16, 16),
     //   new THREE.MeshBasicMaterial({ color: 0xffff00 })
     // )
-    // this.debugSun.position.copy(this.sunDirection).multiplyScalar(15);
+    // this.debugSun.position.copy(sunDirection).multiplyScalar(15);
     // scene.add(this.debugSun)
 
-    // this.updateSun = () =>
-    // {
-    //   this.sunDirection.setFromSpherical(this.sunSpherical)
-
-    //   this.debugSun.position.copy(this.sunDirection).multiplyScalar(5)
-
-    //   this.earthMaterial.uniforms.uSunDirection.value.copy(this.sunDirection)
-    //   atmosphereMaterial.uniforms.uSunDirection.value.copy(this.sunDirection)
-    // }
-    // this.updateSun()
-
-    
-
-    // const gui = new dat.GUI()
-    // gui.add(params, "sunIntensity", 0.0, 5.0, 0.1).onChange((val) => {
-    //   this.dirLight.intensity = val
-    // }).name("Sun Intensity")
-    // gui.add(this.sunSpherical, 'phi').min(0).max(Math.PI).onChange(this.updateSun)
-    // gui.add(this.sunSpherical, 'theta').min(- Math.PI).max(Math.PI).onChange(this.updateSun)
-    // gui.addColor(earthParameters, "atmosphereDayColor").onChange(() =>
-    //   {
-    //     this.earthMaterial.uniforms.uAtmosphereDayColor.value.set(earthParameters.atmosphereDayColor)
-    //     atmosphereMaterial.uniforms.uAtmosphereDayColor.value.set(earthParameters.atmosphereDayColor)
-    //   }
-    //   )
-    // gui.addColor(earthParameters, "atmosphereTwilightColor").onChange(() =>
-    //   {
-    //     this.earthMaterial.uniforms.uAtmosphereTwilightColor.value.set(earthParameters.atmosphereTwilightColor)
-    //     atmosphereMaterial.uniforms.uAtmosphereTwilightColor.value.set(earthParameters.atmosphereTwilightColor)
-    //   }
-    //   )
     // Stats - show fps
     this.stats1 = new Stats()
     this.stats1.showPanel(0) // Panel 0 = fps
