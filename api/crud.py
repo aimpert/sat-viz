@@ -31,18 +31,25 @@ def update_tle(norad_id, logger, db=None):
         if own_session:
             db.close()
 
-def populate_tles(logger):
-    db = next(get_db())
+def populate_tles(logger, db=None):
     norad_ids = []
+    updated = []
+    own_session = False
+    if db is None:
+        db = next(get_db())
+        own_session = True
+
     try:
         norad_ids = [id[0] for id in db.query(Satellite).with_entities(Satellite.norad_id).all()]
         for norad_id in norad_ids:
             update_tle(norad_id, logger, db)
+            updated.append(norad_id)
     except Exception as e:
         logger.warning(f"Failed to populate tles: {e}")
     finally:
-        db.close()
+        if own_session:
+            db.close()
 
-    print(norad_ids)
+    print(f"Total: {len(updated)} {updated}")
 
 populate_tles(get_logger())

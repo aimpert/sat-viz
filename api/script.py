@@ -1,8 +1,8 @@
 import os
 from fastapi import FastAPI, Depends, HTTPException
-from dotenv import load_dotenv # type: ignore
-import psycopg2 # type: ignore
-from psycopg2 import Error # type: ignore
+from dotenv import load_dotenv
+import psycopg2 
+from psycopg2 import Error 
 import requests
 import rs_compute 
 from db_utils import get_db
