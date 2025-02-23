@@ -1,5 +1,5 @@
 from db_utils import Base
-from sqlalchemy import TIMESTAMP, ForeignKey, func
+from sqlalchemy import TIMESTAMP, ForeignKey, func, UniqueConstraint
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from datetime import date, datetime
 from typing import List
@@ -22,5 +22,7 @@ class SatelliteTLEs(Base):
     tle_line1: Mapped[str] = mapped_column(nullable=False)
     tle_line2: Mapped[str] = mapped_column(nullable=False)
     timestamp: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=True, server_default=func.now())
+
+    __table_args__ = (UniqueConstraint('norad_id', 'timestamp', name='uq_norad_timestamp'),)
 
     satellite: Mapped["Satellite"] = relationship("Satellite", back_populates="tles")
