@@ -5,6 +5,8 @@ from models import SatelliteTLEs, Satellite
 from logger import get_logger
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Result
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 def update_tle(norad_id, logger, db=None):
     tle_1, tle_2 = fetch_tle(norad_id, logger)
@@ -69,4 +71,14 @@ def populate_tles(logger, db=None):
     logger.info(f"Updated IDs: {updated_ids} Total {len(updated_ids)}") 
     logger.info(f"Failed IDs: {failed_ids} Total: {len(failed_ids)}")
 
+def read_tle(norad_id, logger, db):
+    try:
+        res = db.query(SatelliteTLEs).filter(SatelliteTLEs.norad_id == norad_id).order_by(SatelliteTLEs.timestamp.desc()).first()
+        if (res): return JSONResponse(content=jsonable_encoder(res))
+        else: return JSONResponse(content={"error": "No TLE found"}, status_code=404)
+    except Exception as e:
+        logger.warning(f"{norad_id} crud: Failed to read tle: {e}")
+        return JSONResponse(content={"error": "Internal Server Error"}, status_code=500)
 # populate_tles(get_logger())
+
+# read_tle(25544)

@@ -127,6 +127,12 @@ export default {
                 scene.add(earth)
 
 
+                // sat
+                const satGeometry = new THREE.SphereGeometry(0.1, 16, 16)
+                const satMaterial = new THREE.MeshBasicMaterial({color: 0xff0000})
+                const satMesh = new THREE.Mesh(satGeometry, satMaterial)
+                satMesh.position.set(10, 10, 10)
+                scene.add(satMesh)
 
                 // this.debugSun = new THREE.Mesh(
                 //   new THREE.SphereGeometry(0.5, 16, 16),
