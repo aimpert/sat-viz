@@ -24,14 +24,23 @@ import earthVertexShader from "../shaders/earth/vertex.glsl"
 import earthFragmentShader from "../shaders/earth/fragment.glsl"
 import atmosphereVertexShader from "../shaders/atmosphere/vertex.glsl"
 import atmosphereFragmentShader from "../shaders/atmosphere/fragment.glsl"
+import { twoline2satrec, propagate, gstime, eciToGeodetic } from 'satellite.js';
 
 export default {
   name: 'ThreeScene',
+  props: {
+    items: Object // Expecting an array of items
+  },
+  watch: {
+    items(newVal) {
+      console.log("Updated items in ThreeScene:", newVal);
+    }
+  },
   data() {
     return {
       camera: null,
       scene: null,
-      renderer: null,
+      renderer: null
     }
   },
   methods: {
@@ -45,7 +54,7 @@ export default {
             _renderer.outputColorSpace = THREE.SRGBColorSpace
         })
 
-
+        const vueComponent = this
         let camera = createCamera(45, 1, 1000, { x: 0, y: 0, z: 20 })
 
         let app = {
@@ -77,7 +86,6 @@ export default {
                 await updateLoadingProgressBar(0.8)
                 scene.background = envMap
 
-  
 
                 const now = new Date();
                 const dayOfYear = (Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(now.getFullYear(), 0, 0)) / 86400000;
@@ -126,13 +134,55 @@ export default {
                 scene.add(atmosphere)
                 scene.add(earth)
 
-
-                // sat
-                const satGeometry = new THREE.SphereGeometry(0.1, 16, 16)
-                const satMaterial = new THREE.MeshBasicMaterial({color: 0xff0000})
+                const satGeometry = new THREE.SphereGeometry(0.3, 16, 16)
+                const satMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xff0000,
+                    transparent: true,
+                    opacity: 0.8
+                })
                 const satMesh = new THREE.Mesh(satGeometry, satMaterial)
                 satMesh.position.set(10, 10, 10)
                 scene.add(satMesh)
+                // sat
+                console.log("About to get sat data")
+                console.log(vueComponent.items)
+                if (vueComponent.items) {
+                    const tle1 = vueComponent.items.tle_line1
+                    const tle2 = vueComponent.items.tle_line2
+                    console.log("TLE Line 1:", tle1)
+                    console.log("TLE Line 2:", tle2)
+                    // console.log("NORAD ID:", vueComponent.items.norad_id)
+                    // console.log("Timestamp:", vueComponent.items.timestamp)
+                    const satrec = twoline2satrec(tle1, tle2)
+                    const currentTime = new Date()
+                    const positionAndVelocity = propagate(satrec, currentTime)
+                    const positionEci = positionAndVelocity.position;
+    
+                    // Convert to geographic coordinates
+                    const gmst = gstime(currentTime);
+                    const positionGd = eciToGeodetic(positionEci, gmst);
+                    
+                    const scaleFactor = 5 / 6731  // Using Earth's mean radius in km
+                    
+                    // Convert to Cartesian coordinates for Three.js
+                    const radius = 5; 
+                    const cartesian = {
+                        // Swap X and Z coordinates and negate Z to align with Three.js coordinate system
+                        x: (radius + positionGd.height * scaleFactor) * Math.cos(positionGd.latitude) * Math.sin(positionGd.longitude),
+                        y: (radius + positionGd.height * scaleFactor) * Math.sin(positionGd.latitude),
+                        z: -(radius + positionGd.height * scaleFactor) * Math.cos(positionGd.latitude) * Math.cos(positionGd.longitude)
+                    };
+    
+                    // Create a rotation matrix for Earth's tilt
+                    const tilt = -(23.5 / 360 * 2 * Math.PI);
+                    const position = new THREE.Vector3(cartesian.x, cartesian.y, cartesian.z);
+                    position.applyAxisAngle(new THREE.Vector3(0, 0, 1), tilt);
+    
+                    // Update satellite position
+                    satMesh.position.copy(position);
+                    console.log("Satellite position updated to:", position);
+                }
+
 
                 // this.debugSun = new THREE.Mesh(
                 //   new THREE.SphereGeometry(0.5, 16, 16),

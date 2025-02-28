@@ -1,6 +1,6 @@
 <template>
 
-<ThreeScene/>
+<ThreeScene :items="items"/>
 
 </template>
 
@@ -28,7 +28,7 @@ export default {
     async fetchItems() {
       try {
         const response = await axios.get(
-          'http://34.218.224.225:8000/test',
+          'http://127.0.0.1:8000/find_tle/25544',
           {
             headers: {
               'Access-Control-Allow-Origin': '*',
@@ -37,6 +37,7 @@ export default {
           }
         );
         //const response = await axios.get('http://34.218.224.225:8000/test');
+        console.log(response.data);
         this.items = response.data;
       }
       catch (error) {

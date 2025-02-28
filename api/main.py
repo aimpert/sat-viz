@@ -7,10 +7,19 @@ from sqlalchemy.orm import Session
 from logger import get_logger
 from fastapi.encoders import jsonable_encoder
 from crud import populate_tles, update_tle, read_tle
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Replace "*" with ["http://localhost:8080"] if needed
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def read_root(logger=Depends(get_logger)):
