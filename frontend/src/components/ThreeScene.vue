@@ -58,10 +58,36 @@ export default {
         let camera = createCamera(45, 1, 1000, { x: 0, y: 0, z: 20 })
 
         let app = {
+            // Store satellite data at the app level
+            satrec: null,
+            satMesh: null,
+            orbitLine: null,
+            earthRadius: 5,
+            scaleFactor: 5 / 6371,
+            // Add properties for the GUI
+            satelliteInfo: {
+                latitude: 0.0,
+                longitude: 0.0,
+                altitude: 0.0
+            },
+            gui: null,
+            
             async initScene() {
 
                 this.controls = new OrbitControls(camera, renderer.domElement)
                 this.controls.enableDamping = true
+
+                const size = 20;
+                const divisions = 20;
+                const gridHelper = new THREE.GridHelper(size, divisions);
+                scene.add(gridHelper);
+
+                const axesHelper = new THREE.AxesHelper(10);
+                scene.add(axesHelper);
+                
+                const polarGridHelper = new THREE.PolarGridHelper(10, 16, 8, 64);
+                polarGridHelper.rotation.x = Math.PI / 2;
+                scene.add(polarGridHelper);
 
                 const earthParameters = {}
                 earthParameters.atmosphereDayColor = '#00aaff'
@@ -134,55 +160,59 @@ export default {
                 scene.add(atmosphere)
                 scene.add(earth)
 
+                // Create the satellite mesh
                 const satGeometry = new THREE.SphereGeometry(0.3, 16, 16)
                 const satMaterial = new THREE.MeshBasicMaterial({
                     color: 0xff0000,
                     transparent: true,
                     opacity: 0.8
                 })
-                const satMesh = new THREE.Mesh(satGeometry, satMaterial)
-                satMesh.position.set(10, 10, 10)
-                scene.add(satMesh)
-                // sat
-                console.log("About to get sat data")
-                console.log(vueComponent.items)
+                this.satMesh = new THREE.Mesh(satGeometry, satMaterial)
+                scene.add(this.satMesh)
+                
+                // Initialize dat.GUI
+                this.gui = new dat.GUI();
+                this.gui.width = 300;
+                
+                // Add satellite position folder with better precision
+                const satelliteFolder = this.gui.addFolder('Satellite Position');
+                
+                // Create controllers with proper decimal precision
+                const latController = satelliteFolder.add(this.satelliteInfo, 'latitude', -90, 90)
+                    .step(0.0001).listen().name('Latitude (°)');
+                
+                const lonController = satelliteFolder.add(this.satelliteInfo, 'longitude', -180, 180)
+                    .step(0.0001).listen().name('Longitude (°)');
+                
+                const altController = satelliteFolder.add(this.satelliteInfo, 'altitude', 0, 1000)
+                    .step(0.01).listen().name('Altitude (km)');
+                
+                // Format the display to ensure float values
+                latController.__precision = 4;
+                latController.__impliedStep = 0.0001;
+                
+                lonController.__precision = 4;
+                lonController.__impliedStep = 0.0001;
+                
+                altController.__precision = 2;
+                altController.__impliedStep = 0.01;
+                
+                satelliteFolder.open();
+                
+                // Initialize satellite data
                 if (vueComponent.items) {
-                    const tle1 = vueComponent.items.tle_line1
-                    const tle2 = vueComponent.items.tle_line2
-                    console.log("TLE Line 1:", tle1)
-                    console.log("TLE Line 2:", tle2)
-                    // console.log("NORAD ID:", vueComponent.items.norad_id)
-                    // console.log("Timestamp:", vueComponent.items.timestamp)
-                    const satrec = twoline2satrec(tle1, tle2)
-                    const currentTime = new Date()
-                    const positionAndVelocity = propagate(satrec, currentTime)
-                    const positionEci = positionAndVelocity.position;
-    
-                    // Convert to geographic coordinates
-                    const gmst = gstime(currentTime);
-                    const positionGd = eciToGeodetic(positionEci, gmst);
+                    const tle1 = vueComponent.items.tle_line1;
+                    const tle2 = vueComponent.items.tle_line2;
                     
-                    const scaleFactor = 5 / 6731  // Using Earth's mean radius in km
+                    // Store the satellite record for use in updateScene
+                    this.satrec = twoline2satrec(tle1, tle2);
                     
-                    // Convert to Cartesian coordinates for Three.js
-                    const radius = 5; 
-                    const cartesian = {
-                        // Swap X and Z coordinates and negate Z to align with Three.js coordinate system
-                        x: (radius + positionGd.height * scaleFactor) * Math.cos(positionGd.latitude) * Math.sin(positionGd.longitude),
-                        y: (radius + positionGd.height * scaleFactor) * Math.sin(positionGd.latitude),
-                        z: -(radius + positionGd.height * scaleFactor) * Math.cos(positionGd.latitude) * Math.cos(positionGd.longitude)
-                    };
-    
-                    // Create a rotation matrix for Earth's tilt
-                    const tilt = -(23.5 / 360 * 2 * Math.PI);
-                    const position = new THREE.Vector3(cartesian.x, cartesian.y, cartesian.z);
-                    position.applyAxisAngle(new THREE.Vector3(0, 0, 1), tilt);
-    
-                    // Update satellite position
-                    satMesh.position.copy(position);
-                    console.log("Satellite position updated to:", position);
+                    // Initial position update
+                    this.updateSatellitePosition();
+                    
+                    // Draw the orbital path
+                    this.drawOrbitPath(60); // 30 minutes
                 }
-
 
                 // this.debugSun = new THREE.Mesh(
                 //   new THREE.SphereGeometry(0.5, 16, 16),
@@ -198,11 +228,278 @@ export default {
                 
                 this.container.appendChild(this.stats1.domElement)
 
+                // Add graticule
+                this.addGraticule();
+
                 await updateLoadingProgressBar(1.0, 100)
             },
+            
+            // Method to calculate satellite position at a given time
+            calculateSatellitePosition(time) {
+                if (!this.satrec) return null;
+                
+                // Get position and velocity
+                const positionAndVelocity = propagate(this.satrec, time);
+                const positionEci = positionAndVelocity.position;
+                
+                // Convert to geographic coordinates
+                const gmst = gstime(time);
+                const positionGd = eciToGeodetic(positionEci, gmst);
+                
+                // Get latitude and longitude in radians
+                const lat = positionGd.latitude;
+                // Store original longitude for GUI display
+                const originalLon = positionGd.longitude;
+                // Negate longitude to flip the direction of movement
+                const lon = -originalLon;
+                
+                // Store raw lat/lon for GUI display (in degrees)
+                if (time.getTime() === new Date().getTime()) {
+                    this.satelliteInfo.latitude = lat * (180/Math.PI);
+                    this.satelliteInfo.longitude = originalLon * (180/Math.PI);
+                    this.satelliteInfo.altitude = positionGd.height;
+                }
+                
+                // Convert to Cartesian coordinates
+                const cosLat = Math.cos(lat);
+                const sinLat = Math.sin(lat);
+                const cosLon = Math.cos(lon);
+                const sinLon = Math.sin(lon);
+                
+                // Standard geographic to Cartesian conversion
+                const x = this.earthRadius * cosLat * cosLon;
+                const z = this.earthRadius * cosLat * sinLon;
+                const y = this.earthRadius * sinLat;
+                
+                // Create position vector
+                const position = new THREE.Vector3(x, y, z);
+                
+                // Add height above Earth's surface
+                const heightVector = position.clone().normalize().multiplyScalar(positionGd.height * this.scaleFactor);
+                position.add(heightVector);
+                
+                // Apply Earth's tilt
+                const tilt = -(23.5 / 360 * 2 * Math.PI);
+                position.applyAxisAngle(new THREE.Vector3(0, 0, 1), tilt);
+                
+                return position;
+            },
+            
+            // Method to draw the orbital path
+            drawOrbitPath(minutes) {
+                if (!this.satrec) return;
+                
+                // Remove existing orbit line if any
+                if (this.orbitLine) {
+                    scene.remove(this.orbitLine);
+                }
+                
+                // Create points for the orbit path
+                const points = [];
+                const currentTime = new Date();
+                
+                // Calculate orbital period for better sampling
+                // Get two positions 1 minute apart
+                const pos1 = propagate(this.satrec, currentTime).position;
+                const pos2 = propagate(this.satrec, new Date(currentTime.getTime() + 60000)).position;
+                
+                // Calculate velocity in km/s
+                const dx = pos2.x - pos1.x;
+                const dy = pos2.y - pos1.y;
+                const dz = pos2.z - pos1.z;
+                const velocity = Math.sqrt(dx*dx + dy*dy + dz*dz) / 60; // km/s
+                
+                // Estimate orbital period (circumference / velocity)
+                // Circumference = 2πr, where r is distance from Earth's center
+                const distance = Math.sqrt(pos1.x*pos1.x + pos1.y*pos1.y + pos1.z*pos1.z); // km
+                const circumference = 2 * Math.PI * distance; // km
+                const period = circumference / velocity; // seconds
+                
+                // Use more points for longer time periods
+                const numPoints = Math.max(100, Math.min(500, Math.floor(minutes * 60 / period * 100)));
+                console.log(`Estimated orbital period: ${period/60} minutes, using ${numPoints} points`);
+                
+                // Calculate points with adaptive time steps
+                for (let i = 0; i < numPoints; i++) {
+                    // Calculate time for this point
+                    const pointTime = new Date(currentTime.getTime() + (i * minutes * 60 * 1000) / numPoints);
+                    
+                    // Calculate position at this time
+                    const position = this.calculateSatellitePosition(pointTime);
+                    if (position) {
+                        points.push(position);
+                    }
+                }
+                
+                // Create the line geometry
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                
+                // Create the line material
+                const material = new THREE.LineBasicMaterial({
+                    color: 0xffff00,
+                    linewidth: 2,
+                    transparent: true,
+                    opacity: 0.7
+                });
+                
+                // Create the line
+                this.orbitLine = new THREE.Line(geometry, material);
+                scene.add(this.orbitLine);
+                
+                // Add a second line to complete the orbit if needed
+                if (minutes > period/60) {
+                    // Check if first and last points are far apart
+                    const firstPoint = points[0];
+                    const lastPoint = points[points.length - 1];
+                    const distance = firstPoint.distanceTo(lastPoint);
+                    
+                    if (distance > 0.1) { // If points aren't close, add connecting line
+                        const connectPoints = [lastPoint, firstPoint];
+                        const connectGeometry = new THREE.BufferGeometry().setFromPoints(connectPoints);
+                        const connectLine = new THREE.Line(connectGeometry, material);
+                        this.orbitLine.add(connectLine); // Add as child of main line
+                    }
+                }
+            },
+            
+            // Method to update satellite position
+            updateSatellitePosition() {
+                if (!this.satrec || !this.satMesh) return;
+                
+                const currentTime = new Date();
+                const position = this.calculateSatellitePosition(currentTime);
+                
+                if (position) {
+                    // Update satellite position
+                    this.satMesh.position.copy(position);
+                }
+            },
+            
             updateScene(interval, elapsed) {
                 this.controls.update()
                 this.stats1.update()
+                
+                // Update satellite position in each frame
+                this.updateSatellitePosition();
+            },
+
+            // Method to create graticule
+            addGraticule() {
+                // Create a group to hold all lines
+                const graticuleGroup = new THREE.Group();
+                
+                // Material for the regular grid lines
+                const material = new THREE.LineBasicMaterial({
+                    color: 0xFFFFFF,  // White color
+                    transparent: true,
+                    opacity: 0.2,
+                    linewidth: 1
+                });
+                
+                // Material for major lines (every 90 degrees)
+                const majorMaterial = new THREE.LineBasicMaterial({
+                    color: 0xFFFFFF,  // White color
+                    transparent: true,
+                    opacity: 0.4,
+                    linewidth: 2
+                });
+                
+                // Material for equator and prime meridian
+                const equatorMaterial = new THREE.LineBasicMaterial({
+                    color: 0x00FF00,  // Green color
+                    transparent: true,
+                    opacity: 0.8,
+                    linewidth: 2
+                });
+                
+                // Draw latitude lines
+                for (let lat = -80; lat <= 80; lat += 10) {
+                    const points = [];
+                    for (let lon = -180; lon <= 180; lon += 5) {
+                        const latRad = lat * (Math.PI / 180);
+                        const lonRad = lon * (Math.PI / 180);
+                        
+                        const cosLat = Math.cos(latRad);
+                        const sinLat = Math.sin(latRad);
+                        const cosLon = Math.cos(lonRad);
+                        const sinLon = Math.sin(lonRad);
+                        
+                        const x = this.earthRadius * cosLat * cosLon;
+                        const z = this.earthRadius * cosLat * sinLon;
+                        const y = this.earthRadius * sinLat;
+                        
+                        points.push(new THREE.Vector3(x, y, z));
+                    }
+                    
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const line = new THREE.Line(geometry, Math.abs(lat) % 90 === 0 ? majorMaterial : material);
+                    graticuleGroup.add(line);
+                }
+                
+                // Draw longitude lines
+                for (let lon = -180; lon <= 180; lon += 10) {
+                    const points = [];
+                    for (let lat = -90; lat <= 90; lat += 5) {
+                        const latRad = lat * (Math.PI / 180);
+                        const lonRad = lon * (Math.PI / 180);
+                        
+                        const cosLat = Math.cos(latRad);
+                        const sinLat = Math.sin(latRad);
+                        const cosLon = Math.cos(lonRad);
+                        const sinLon = Math.sin(lonRad);
+                        
+                        const x = this.earthRadius * cosLat * cosLon;
+                        const z = this.earthRadius * cosLat * sinLon;
+                        const y = this.earthRadius * sinLat;
+                        
+                        points.push(new THREE.Vector3(x, y, z));
+                    }
+                    
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const line = new THREE.Line(geometry, Math.abs(lon) % 90 === 0 ? majorMaterial : material);
+                    graticuleGroup.add(line);
+                }
+                
+                // Equator (latitude 0)
+                const equatorPoints = [];
+                for (let lon = -180; lon <= 180; lon += 5) {
+                    const lonRad = lon * (Math.PI / 180);
+                    
+                    const x = this.earthRadius * Math.cos(lonRad);
+                    const z = this.earthRadius * Math.sin(lonRad);
+                    const y = 0;
+                    
+                    equatorPoints.push(new THREE.Vector3(x, y, z));
+                }
+                const equatorGeometry = new THREE.BufferGeometry().setFromPoints(equatorPoints);
+                const equatorLine = new THREE.Line(equatorGeometry, equatorMaterial);
+                graticuleGroup.add(equatorLine);
+                
+                // Prime Meridian (longitude 0)
+                const meridianPoints = [];
+                for (let lat = -90; lat <= 90; lat += 5) {
+                    const latRad = lat * (Math.PI / 180);
+                    
+                    const x = this.earthRadius * Math.cos(latRad);
+                    const z = 0;
+                    const y = this.earthRadius * Math.sin(latRad);
+                    
+                    meridianPoints.push(new THREE.Vector3(x, y, z));
+                }
+                const meridianGeometry = new THREE.BufferGeometry().setFromPoints(meridianPoints);
+                const meridianLine = new THREE.Line(meridianGeometry, equatorMaterial);
+                graticuleGroup.add(meridianLine);
+                
+                // Move the graticule slightly above the Earth's surface
+                const offset = 0.01;  // Small offset to prevent z-fighting
+                graticuleGroup.scale.set(1 + offset, 1 + offset, 1 + offset);
+                
+                // Apply Earth's tilt to the graticule
+                const tilt = -(23.5 / 360 * 2 * Math.PI);
+                graticuleGroup.rotateZ(tilt);
+                
+                // Add the graticule group to the scene
+                scene.add(graticuleGroup);
             }
         }
 

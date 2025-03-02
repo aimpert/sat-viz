@@ -49,6 +49,7 @@ def db_test(id: int, db: Session = Depends(get_db), logger=Depends(get_logger)):
 
 @app.get("/find_tle/{id}")
 def db_test(id: int, db: Session = Depends(get_db), logger=Depends(get_logger)):
+    # update_tle(id, logger, db)
     return read_tle(id, logger, db)
 
 @app.get("/db_test")

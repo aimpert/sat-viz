@@ -39,7 +39,6 @@ fn calculate_timestamp(tle_1: &str) -> PyResult<String> {
 
 #[pymodule]
 fn rs_compute(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(calculate_orbit, m)?)?;
     m.add_function(wrap_pyfunction!(calculate_timestamp, m)?)?;
     Ok(())
 }
