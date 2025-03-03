@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Result
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, and_
 
 def update_tle(norad_id, logger, db=None):
     tle_1, tle_2 = fetch_tle(norad_id, logger)
@@ -78,6 +79,31 @@ def read_tle(norad_id, logger, db):
         else: return JSONResponse(content={"error": "No TLE found"}, status_code=404)
     except Exception as e:
         logger.warning(f"{norad_id} crud: Failed to read tle: {e}")
+        return JSONResponse(content={"error": "Internal Server Error"}, status_code=500)
+    
+def read_tles(logger, db):
+    try:
+        latest_timestamps = db.query(
+            SatelliteTLEs.norad_id,
+            func.max(SatelliteTLEs.timestamp).label('latest_timestamp')
+        ).group_by(SatelliteTLEs.norad_id).subquery()
+        
+        logger.info("Created latest_timestamps subquery")
+        
+        res = db.query(SatelliteTLEs).join(
+            latest_timestamps,
+            and_(
+                SatelliteTLEs.norad_id == latest_timestamps.c.norad_id,
+                SatelliteTLEs.timestamp == latest_timestamps.c.latest_timestamp
+            )
+        ).all()
+        
+        logger.info(f"Query executed, found {len(res)} results")
+        
+        if (res): return JSONResponse(content=jsonable_encoder(res))
+        else: return JSONResponse(content={"error": "No TLEs found"}, status_code=404)
+    except Exception as e:
+        logger.warning(f"crud: Failed to read all TLEs: {e}")
         return JSONResponse(content={"error": "Internal Server Error"}, status_code=500)
 # populate_tles(get_logger())
 

@@ -29,7 +29,7 @@ import { twoline2satrec, propagate, gstime, eciToGeodetic } from 'satellite.js';
 export default {
   name: 'ThreeScene',
   props: {
-    items: Object // Expecting an array of items
+    items: Array // Expecting an array of items
   },
   watch: {
     items(newVal) {
@@ -59,7 +59,7 @@ export default {
 
         let app = {
             // Store satellite data at the app level
-            satrec: null,
+            satellites: {},
             satMesh: null,
             orbitLine: null,
             earthRadius: 5,
@@ -161,57 +161,73 @@ export default {
                 scene.add(earth)
 
                 // Create the satellite mesh
-                const satGeometry = new THREE.SphereGeometry(0.3, 16, 16)
-                const satMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xff0000,
-                    transparent: true,
-                    opacity: 0.8
-                })
-                this.satMesh = new THREE.Mesh(satGeometry, satMaterial)
-                scene.add(this.satMesh)
+                // const satGeometry = new THREE.SphereGeometry(0.3, 16, 16)
+                // const satMaterial = new THREE.MeshBasicMaterial({
+                //     color: 0xff0000,
+                //     transparent: true,
+                //     opacity: 0.8
+                // })
+                // this.satMesh = new THREE.Mesh(satGeometry, satMaterial)
+                // scene.add(this.satMesh)
                 
                 // Initialize dat.GUI
-                this.gui = new dat.GUI();
-                this.gui.width = 300;
+                // this.gui = new dat.GUI();
+                // this.gui.width = 300;
                 
-                // Add satellite position folder with better precision
-                const satelliteFolder = this.gui.addFolder('Satellite Position');
+                // // Add satellite position folder with better precision
+                // const satelliteFolder = this.gui.addFolder('Satellite Position');
                 
-                // Create controllers with proper decimal precision
-                const latController = satelliteFolder.add(this.satelliteInfo, 'latitude', -90, 90)
-                    .step(0.0001).listen().name('Latitude (°)');
+                // // Create controllers with proper decimal precision
+                // const latController = satelliteFolder.add(this.satelliteInfo, 'latitude', -90, 90)
+                //     .step(0.0001).listen().name('Latitude (°)');
                 
-                const lonController = satelliteFolder.add(this.satelliteInfo, 'longitude', -180, 180)
-                    .step(0.0001).listen().name('Longitude (°)');
+                // const lonController = satelliteFolder.add(this.satelliteInfo, 'longitude', -180, 180)
+                //     .step(0.0001).listen().name('Longitude (°)');
                 
-                const altController = satelliteFolder.add(this.satelliteInfo, 'altitude', 0, 1000)
-                    .step(0.01).listen().name('Altitude (km)');
+                // const altController = satelliteFolder.add(this.satelliteInfo, 'altitude', 0, 1000)
+                //     .step(0.01).listen().name('Altitude (km)');
                 
-                // Format the display to ensure float values
-                latController.__precision = 4;
-                latController.__impliedStep = 0.0001;
+                // // Format the display to ensure float values
+                // latController.__precision = 4;
+                // latController.__impliedStep = 0.0001;
                 
-                lonController.__precision = 4;
-                lonController.__impliedStep = 0.0001;
+                // lonController.__precision = 4;
+                // lonController.__impliedStep = 0.0001;
                 
-                altController.__precision = 2;
-                altController.__impliedStep = 0.01;
+                // altController.__precision = 2;
+                // altController.__impliedStep = 0.01;
                 
-                satelliteFolder.open();
+                // satelliteFolder.open();
                 
                 // Initialize satellite data
                 if (vueComponent.items) {
-                    const tle1 = vueComponent.items.tle_line1;
-                    const tle2 = vueComponent.items.tle_line2;
-                    
-                    // Store the satellite record for use in updateScene
-                    this.satrec = twoline2satrec(tle1, tle2);
+                    vueComponent.items.forEach((item) => {
+
+                        const satGeometry = new THREE.SphereGeometry(0.3, 16, 16)
+                        const satMaterial = new THREE.MeshBasicMaterial({
+                            color: 0xff0000,
+                            transparent: true,
+                            opacity: 0.8
+                        })
+                        const satMesh = new THREE.Mesh(satGeometry, satMaterial)
+                        scene.add(satMesh)
+
+                        this.satellites[item.norad_id] = {
+                            id: item.norad_id,
+                            tle1: item.tle_line1,
+                            tle2: item.tle_line2,
+                            satrec: twoline2satrec(item.tle_line1, item.tle_line2),
+                            mesh: satMesh
+                        }
+
+                        const position = this.calculateSatellitePosition(this.satellites[item.norad_id], new Date());
+                        if (position) satMesh.position.copy(position)
+                    })
                     
                     // Initial position update
-                    this.updateSatellitePosition();
                     
                     // Draw the orbital path
-                    this.drawOrbitPath(60); // 30 minutes
+                    // this.drawOrbitPath(60);
                 }
 
                 // this.debugSun = new THREE.Mesh(
@@ -235,11 +251,11 @@ export default {
             },
             
             // Method to calculate satellite position at a given time
-            calculateSatellitePosition(time) {
-                if (!this.satrec) return null;
+            calculateSatellitePosition(satellite, time) {
+                if (!satellite || !satellite.satrec) return null;
                 
                 // Get position and velocity
-                const positionAndVelocity = propagate(this.satrec, time);
+                const positionAndVelocity = propagate(satellite.satrec, time);
                 const positionEci = positionAndVelocity.position;
                 
                 // Convert to geographic coordinates
@@ -254,11 +270,11 @@ export default {
                 const lon = -originalLon;
                 
                 // Store raw lat/lon for GUI display (in degrees)
-                if (time.getTime() === new Date().getTime()) {
-                    this.satelliteInfo.latitude = lat * (180/Math.PI);
-                    this.satelliteInfo.longitude = originalLon * (180/Math.PI);
-                    this.satelliteInfo.altitude = positionGd.height;
-                }
+                // if (time.getTime() === new Date().getTime()) {
+                //     this.satelliteInfo.latitude = lat * (180/Math.PI);
+                //     this.satelliteInfo.longitude = originalLon * (180/Math.PI);
+                //     this.satelliteInfo.altitude = positionGd.height;
+                // }
                 
                 // Convert to Cartesian coordinates
                 const cosLat = Math.cos(lat);
@@ -286,81 +302,81 @@ export default {
             },
             
             // Method to draw the orbital path
-            drawOrbitPath(minutes) {
-                if (!this.satrec) return;
+            // drawOrbitPath(minutes) {
+            //     if (!this.satrec) return;
                 
-                // Remove existing orbit line if any
-                if (this.orbitLine) {
-                    scene.remove(this.orbitLine);
-                }
+            //     // Remove existing orbit line if any
+            //     if (this.orbitLine) {
+            //         scene.remove(this.orbitLine);
+            //     }
                 
-                // Create points for the orbit path
-                const points = [];
-                const currentTime = new Date();
+            //     // Create points for the orbit path
+            //     const points = [];
+            //     const currentTime = new Date();
                 
-                // Calculate orbital period for better sampling
-                // Get two positions 1 minute apart
-                const pos1 = propagate(this.satrec, currentTime).position;
-                const pos2 = propagate(this.satrec, new Date(currentTime.getTime() + 60000)).position;
+            //     // Calculate orbital period for better sampling
+            //     // Get two positions 1 minute apart
+            //     const pos1 = propagate(this.satrec, currentTime).position;
+            //     const pos2 = propagate(this.satrec, new Date(currentTime.getTime() + 60000)).position;
                 
-                // Calculate velocity in km/s
-                const dx = pos2.x - pos1.x;
-                const dy = pos2.y - pos1.y;
-                const dz = pos2.z - pos1.z;
-                const velocity = Math.sqrt(dx*dx + dy*dy + dz*dz) / 60; // km/s
+            //     // Calculate velocity in km/s
+            //     const dx = pos2.x - pos1.x;
+            //     const dy = pos2.y - pos1.y;
+            //     const dz = pos2.z - pos1.z;
+            //     const velocity = Math.sqrt(dx*dx + dy*dy + dz*dz) / 60; // km/s
                 
-                // Estimate orbital period (circumference / velocity)
-                // Circumference = 2πr, where r is distance from Earth's center
-                const distance = Math.sqrt(pos1.x*pos1.x + pos1.y*pos1.y + pos1.z*pos1.z); // km
-                const circumference = 2 * Math.PI * distance; // km
-                const period = circumference / velocity; // seconds
+            //     // Estimate orbital period (circumference / velocity)
+            //     // Circumference = 2πr, where r is distance from Earth's center
+            //     const distance = Math.sqrt(pos1.x*pos1.x + pos1.y*pos1.y + pos1.z*pos1.z); // km
+            //     const circumference = 2 * Math.PI * distance; // km
+            //     const period = circumference / velocity; // seconds
                 
-                // Use more points for longer time periods
-                const numPoints = Math.max(100, Math.min(500, Math.floor(minutes * 60 / period * 100)));
-                console.log(`Estimated orbital period: ${period/60} minutes, using ${numPoints} points`);
+            //     // Use more points for longer time periods
+            //     const numPoints = Math.max(100, Math.min(500, Math.floor(minutes * 60 / period * 100)));
+            //     console.log(`Estimated orbital period: ${period/60} minutes, using ${numPoints} points`);
                 
-                // Calculate points with adaptive time steps
-                for (let i = 0; i < numPoints; i++) {
-                    // Calculate time for this point
-                    const pointTime = new Date(currentTime.getTime() + (i * minutes * 60 * 1000) / numPoints);
+            //     // Calculate points with adaptive time steps
+            //     for (let i = 0; i < numPoints; i++) {
+            //         // Calculate time for this point
+            //         const pointTime = new Date(currentTime.getTime() + (i * minutes * 60 * 1000) / numPoints);
                     
-                    // Calculate position at this time
-                    const position = this.calculateSatellitePosition(pointTime);
-                    if (position) {
-                        points.push(position);
-                    }
-                }
+            //         // Calculate position at this time
+            //         const position = this.calculateSatellitePosition(pointTime);
+            //         if (position) {
+            //             points.push(position);
+            //         }
+            //     }
                 
-                // Create the line geometry
-                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            //     // Create the line geometry
+            //     const geometry = new THREE.BufferGeometry().setFromPoints(points);
                 
-                // Create the line material
-                const material = new THREE.LineBasicMaterial({
-                    color: 0xffff00,
-                    linewidth: 2,
-                    transparent: true,
-                    opacity: 0.7
-                });
+            //     // Create the line material
+            //     const material = new THREE.LineBasicMaterial({
+            //         color: 0xffff00,
+            //         linewidth: 2,
+            //         transparent: true,
+            //         opacity: 0.7
+            //     });
                 
-                // Create the line
-                this.orbitLine = new THREE.Line(geometry, material);
-                scene.add(this.orbitLine);
+            //     // Create the line
+            //     this.orbitLine = new THREE.Line(geometry, material);
+            //     scene.add(this.orbitLine);
                 
-                // Add a second line to complete the orbit if needed
-                if (minutes > period/60) {
-                    // Check if first and last points are far apart
-                    const firstPoint = points[0];
-                    const lastPoint = points[points.length - 1];
-                    const distance = firstPoint.distanceTo(lastPoint);
+            //     // Add a second line to complete the orbit if needed
+            //     if (minutes > period/60) {
+            //         // Check if first and last points are far apart
+            //         const firstPoint = points[0];
+            //         const lastPoint = points[points.length - 1];
+            //         const distance = firstPoint.distanceTo(lastPoint);
                     
-                    if (distance > 0.1) { // If points aren't close, add connecting line
-                        const connectPoints = [lastPoint, firstPoint];
-                        const connectGeometry = new THREE.BufferGeometry().setFromPoints(connectPoints);
-                        const connectLine = new THREE.Line(connectGeometry, material);
-                        this.orbitLine.add(connectLine); // Add as child of main line
-                    }
-                }
-            },
+            //         if (distance > 0.1) { // If points aren't close, add connecting line
+            //             const connectPoints = [lastPoint, firstPoint];
+            //             const connectGeometry = new THREE.BufferGeometry().setFromPoints(connectPoints);
+            //             const connectLine = new THREE.Line(connectGeometry, material);
+            //             this.orbitLine.add(connectLine); // Add as child of main line
+            //         }
+            //     }
+            // },
             
             // Method to update satellite position
             updateSatellitePosition() {

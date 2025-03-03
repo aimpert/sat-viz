@@ -28,7 +28,7 @@ export default {
     async fetchItems() {
       try {
         const response = await axios.get(
-          'http://127.0.0.1:8000/find_tle/25544',
+          'http://127.0.0.1:8000/read_tles/',
           {
             headers: {
               'Access-Control-Allow-Origin': '*',

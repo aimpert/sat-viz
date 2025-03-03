@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from logger import get_logger
 from fastapi.encoders import jsonable_encoder
-from crud import populate_tles, update_tle, read_tle
+from crud import populate_tles, update_tle, read_tle, read_tles
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -47,10 +47,15 @@ def db_test(db: Session = Depends(get_db), logger=Depends(get_logger)):
 def db_test(id: int, db: Session = Depends(get_db), logger=Depends(get_logger)):
     update_tle(id, logger, db)
 
-@app.get("/find_tle/{id}")
+@app.get("/read_tle/{id}")
 def db_test(id: int, db: Session = Depends(get_db), logger=Depends(get_logger)):
     # update_tle(id, logger, db)
     return read_tle(id, logger, db)
+
+@app.get("/read_tles/")
+def db_test(db: Session = Depends(get_db), logger=Depends(get_logger)):
+    # update_tle(id, logger, db)
+    return read_tles(logger, db)
 
 @app.get("/db_test")
 def db_test(db: Session = Depends(get_db)):
